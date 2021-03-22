@@ -96,7 +96,7 @@ jobs:
               throw Error(`Several branches with head commit ${submoduleCommitSHA} found`);
             }
             const [ submoduleBranch ] = branches;
-            console.log(`##[set-output name=submodule_branch;]${submoduleBranch}`);
+            console.log(`##[set-output name=submodule_branch;]${submoduleBranch.name}`);
 
       - name: Fetch latest code
         uses: actions/checkout@v2
