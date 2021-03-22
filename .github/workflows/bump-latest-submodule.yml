@@ -1,6 +1,4 @@
 name: "Bump Latest Submodule on PR Comment"
-description: "A GitHub Action to bump latest submodule changes triggered by comment in pull request."
-author: "Yaroslav Tarkan <@yatarkan>"
 on:
   issue_comment:
     types: [created]
