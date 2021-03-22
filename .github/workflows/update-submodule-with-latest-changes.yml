@@ -130,7 +130,7 @@ jobs:
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           cd $SUBMODULE_PATH
-          get checkout $SUBMODULE_BRANCH
+          git checkout $SUBMODULE_BRANCH
           git merge $MERGE_BRANCH --no-edit
           git push
           cd ..
