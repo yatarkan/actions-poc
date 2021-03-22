@@ -127,14 +127,16 @@ jobs:
           SUBMODULE_BRANCH: ${{ steps.get_submodule_branch.outputs.submodule_branch }}
           MERGE_BRANCH: ${{ steps.parse_action_command.outputs.merge_branch }}
         run: |
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           cd $SUBMODULE_PATH
           git checkout $SUBMODULE_BRANCH
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git merge $MERGE_BRANCH --no-edit
           git push
           cd ..
           git add $SUBMODULE_PATH
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
           git commit -m "Bump submodule $SUBMODULE_PATH"
           git merge $MERGE_BRANCH --no-edit
           git push
