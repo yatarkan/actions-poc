@@ -1,0 +1,142 @@
+name: "Update Submodule with Latest Changes on PR Comment"
+on:
+  issue_comment:
+    types: [created]
+jobs:
+  update_submodule_with_latest_changes:
+    name: Update Submodule with Latest Changes
+    if: github.event.issue.pull_request != '' && contains(github.event.comment.body, '/update:')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Parse action command
+        id: parse_action_command
+        run: |
+          DELIMITER=':'
+          DEFAULT_MERGE_BRANCH='master'
+          
+          readarray -d $DELIMITER -t SPLITTED_COMMANDS <<< ${{ github.event.comment.body }}
+          
+          COMMAND=${SPLITTED_COMMANDS[0]}
+          SUBMODULE_PATH=${SPLITTED_COMMANDS[1]}
+          MERGE_BRANCH=${SPLITTED_COMMANDS[2]}
+
+          if [ $COMMAND != '/update' ]; then
+            echo "Error: Invalid command $COMMAND"
+            exit 1
+          elif [ -z $SUBMODULE_PATH ]; then
+            echo 'Error: No submodule path provided'
+            exit 1
+          elif [ -z $MERGE_BRANCH ]; then
+            echo "No bump branch provided - using default branch $DEFAULT_MERGE_BRANCH"
+            MERGE_BRANCH=$DEFAULT_MERGE_BRANCH
+          fi
+          echo "##[set-output name=submodule_path;]$SUBMODULE_PATH"
+          echo "##[set-output name=merge_branch;]$MERGE_BRANCH"
+      - name: Get submodule latest commit
+        id: get_submodule_latest_commit
+        env:
+          SUBMODULE_PATH: ${{ steps.parse_action_command.outputs.submodule_path }}
+        uses: actions/github-script@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { issue, repository } = context.payload;
+            const [ owner, repo ] = repository.full_name.split('/');
+            const { data: pullRequestFiles } = await github.pulls.listFiles({
+              owner,
+              repo,
+              pull_number: issue.number
+            });
+            const submodulePath = process.env.SUBMODULE_PATH;
+            const submoduleChange = pullRequestFiles.find(({ filename }) => filename === submodulePath);
+            if (!submoduleChange) {
+              throw Error(`Pull request has no changes in submodule ${submodule}`);
+            }
+            console.log(`##[set-output name=sha;]${submoduleChange.sha}`);
+
+      - name: Get submodule branch
+        id: get_submodule_branch
+        env:
+          SUBMODULE_PATH: ${{ steps.parse_action_command.outputs.submodule_path }}
+          SUBMODULE_COMMIT_SHA: ${{ steps.get_submodule_latest_commit.outputs.sha }}
+        uses: actions/github-script@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { issue, repository } = context.payload;
+            const [ owner, repo ] = repository.full_name.split('/');
+            const { data: pullRequest } = await github.pulls.get({
+              owner,
+              repo,
+              pull_number: issue.number
+            });
+            const forkOwner = pullRequest.head.repo.owner.login;
+
+            const submoduleCommitSHA = process.env.SUBMODULE_COMMIT_SHA;
+            const submodulePath = process.env.SUBMODULE_PATH;
+            const { data: repoContent } = await github.repos.getContent({
+              owner,
+              repo,
+              path: submodulePath,
+            });
+
+            const repoRegExp = /\/(?<repo>[\w-]+)\.git$/;
+            const submoduleRepo = repoRegExp.exec(repoContent.submodule_git_url).groups.repo;
+            const submoduleOwner = forkOwner;
+
+            const { data: branches } = await github.repos.listBranchesForHeadCommit({
+              owner: submoduleOwner,
+              repo: submoduleRepo,
+              commit_sha: submoduleCommitSHA,
+            });
+            if (!branches.length) {
+              throw Error(`No branches with head commit ${submoduleCommitSHA} found`);
+            }
+            if (branches.length > 1) {
+              throw Error(`Several branches with head commit ${submoduleCommitSHA} found`);
+            }
+            const [ submoduleBranch ] = branches;
+            console.log(`##[set-output name=submodule_branch;]${submoduleBranch.name}`);
+
+      - name: Fetch latest code
+        uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.ACTIONS_PAT }}
+          fetch-depth: 0
+          submodules: 'true'
+      - name: Fetch PR source branch name
+        id: fetch_source_branch
+        uses: actions/github-script@v3
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { issue, repository } = context.payload;
+            const [ owner, repo ] = repository.full_name.split('/');
+            const { data: pullRequest } = await github.pulls.get({
+              owner,
+              repo,
+              pull_number: issue.number
+            });
+            const { ref: sourceBranch } = pullRequest.head;
+            console.log(`##[set-output name=branch;]${sourceBranch}`);
+      - name: Checkout to PR branch
+        run: git checkout ${{ steps.fetch_source_branch.outputs.branch }}
+      - name: Update submodule
+        env:
+          SUBMODULE_PATH: ${{ steps.parse_action_command.outputs.submodule_path }}
+          SUBMODULE_BRANCH: ${{ steps.get_submodule_branch.outputs.submodule_branch }}
+          MERGE_BRANCH: ${{ steps.parse_action_command.outputs.merge_branch }}
+        run: |
+          cd $SUBMODULE_PATH
+          git checkout $SUBMODULE_BRANCH
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git merge $MERGE_BRANCH --no-edit
+          git push
+          cd ..
+          git add $SUBMODULE_PATH
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git commit -m "Bump submodule $SUBMODULE_PATH"
+          git merge $MERGE_BRANCH --no-edit
+          git push
