@@ -83,7 +83,7 @@ jobs:
 
           cd $SUBMODULE_PATH
           REBASE_TARGET=$SUBMODULE_BRANCH
-          if [! -z $SUBMODULE_REMOTE ]; then
+          if [ ! -z $SUBMODULE_REMOTE ]; then
             SUBMODULE_ORIGINAL_URL=$(git config --file ../.gitmodules --get submodule.$SUBMODULE_PATH.url)
             SUBMODULE_REMOTE_URL=${SUBMODULE_ORIGINAL_URL/$REPO_OWNER/$SUBMODULE_REMOTE}
             git remote add bump_remote $SUBMODULE_REMOTE_URL
