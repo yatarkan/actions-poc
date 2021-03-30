@@ -12,13 +12,15 @@ jobs:
         id: parse_action_command
         run: |
           DELIMITER=':'
-          DEFAULT_BUMP_BRANCH='master'
+          DEFAULT_SUBMODULE_BRANCH='master'
           
           readarray -d $DELIMITER -t SPLITTED_COMMANDS <<< ${{ github.event.comment.body }}
+
+          COMMANDS_LENGTH=${#SPLITTED_COMMANDS[@]}
           
           COMMAND=${SPLITTED_COMMANDS[0]}
           SUBMODULE_PATH=${SPLITTED_COMMANDS[1]}
-          BUMP_BRANCH=${SPLITTED_COMMANDS[2]}
+          SUBMODULE_BRANCH=${SPLITTED_COMMANDS[2]}
 
           if [ $COMMAND != '/bump' ]; then
             echo "Error: Invalid command $COMMAND"
@@ -26,12 +28,17 @@ jobs:
           elif [ -z $SUBMODULE_PATH ]; then
             echo 'Error: No submodule path provided'
             exit 1
-          elif [ -z $BUMP_BRANCH ]; then
-            echo "No bump branch provided - using default branch $DEFAULT_BUMP_BRANCH"
-            BUMP_BRANCH=$DEFAULT_BUMP_BRANCH
+          elif [ -z $SUBMODULE_BRANCH ]; then
+            echo "No submodule branch provided - using default branch $DEFAULT_SUBMODULE_BRANCH"
+            SUBMODULE_BRANCH=$DEFAULT_SUBMODULE_BRANCH
+          elif [ $COMMANDS_LENGTH = 4 ]; then
+            SUBMODULE_REMOTE=${SPLITTED_COMMANDS[2]}
+            SUBMODULE_BRANCH=${SPLITTED_COMMANDS[3]}
+            echo "Bumping $SUBMODULE_BRANCH branch from remote $SUBMODULE_REMOTE"
           fi
           echo "##[set-output name=submodule_path;]$SUBMODULE_PATH"
-          echo "##[set-output name=bump_branch;]$BUMP_BRANCH"
+          echo "##[set-output name=submodule_remote;]$SUBMODULE_REMOTE"
+          echo "##[set-output name=submodule_branch;]$SUBMODULE_BRANCH"
       - name: Fetch latest code
         uses: actions/checkout@v2
         with:
@@ -39,7 +46,7 @@ jobs:
           fetch-depth: 0
           submodules: 'true'
       - name: Fetch PR source branch name
-        id: fetch_source_branch
+        id: fetch_pr_and_target_branch
         uses: actions/github-script@v3
         with:
           github-token: ${{ secrets.GITHUB_TOKEN }}
@@ -51,20 +58,42 @@ jobs:
               repo,
               pull_number: issue.number
             });
-            const { ref: sourceBranch } = pullRequest.head;
-            console.log(`##[set-output name=branch;]${sourceBranch}`);
-      - name: Checkout to PR branch
-        run: git checkout ${{ steps.fetch_source_branch.outputs.branch }}
-      - name: Update submodule
+            const { ref: prBranch } = pullRequest.head;
+            const { ref: baseBranch } = pullRequest.base;
+            const { clone_url: prRemoteUrl } = pullRequest.head.repo;
+            console.log(`##[set-output name=repo_owner;]${owner}`);
+            console.log(`##[set-output name=pr_branch;]${prBranch}`);
+            console.log(`##[set-output name=pr_remote_url;]${prRemoteUrl}`);
+            console.log(`##[set-output name=base_branch;]${baseBranch}`); 
+      - name: Bump submodule
         env:
+          REPO_OWNER: ${{ steps.fetch_pr_and_target_branch.outputs.repo_owner }}
+          PR_BRANCH: ${{ steps.fetch_pr_and_target_branch.outputs.pr_branch }}
+          PR_REMOTE_URL: ${{ steps.fetch_pr_and_target_branch.outputs.pr_remote_url }}
+          BASE_BRANCH: ${{ steps.fetch_pr_and_target_branch.outputs.base_branch }}
           SUBMODULE_PATH: ${{ steps.parse_action_command.outputs.submodule_path }}
-          BUMP_BRANCH: ${{ steps.parse_action_command.outputs.bump_branch }}
+          SUBMODULE_REMOTE: ${{ steps.parse_action_command.outputs.submodule_remote }}
+          SUBMODULE_BRANCH: ${{ steps.parse_action_command.outputs.submodule_branch }}
+          GIT_USER_NAME: 'github-actions[bot]'
+          GIT_USER_EMAIL: '41898282+github-actions[bot]@users.noreply.github.com'
         run: |
+          git remote add pr_remote $PR_REMOTE_URL
+          git fetch pr_remote
+          git checkout $PR_BRANCH
+
           cd $SUBMODULE_PATH
-          git rebase $BUMP_BRANCH
+          if [ ! -z $SUBMODULE_REMOTE ]; then
+            SUBMODULE_ORIGINAL_URL=$(git config --file ../.gitmodules --get submodule.$SUBMODULE_PATH.url)
+            SUBMODULE_REMOTE_URL=${SUBMODULE_ORIGINAL_URL/$REPO_OWNER/$SUBMODULE_REMOTE}
+            git remote add bump_remote $SUBMODULE_REMOTE_URL
+            git fetch bump_remote
+          fi
+          git checkout $SUBMODULE_BRANCH
+          
           cd ..
           git add $SUBMODULE_PATH
-          git config user.name 'github-actions[bot]'
-          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git commit -m "Bump latest upstream from submodule $SUBMODULE_PATH"
+          git config user.name $GIT_USER_NAME
+          git config user.email $GIT_USER_EMAIL
+          git commit -m "Bump branch $SUBMODULE_BRANCH from submodule $SUBMODULE_PATH"
+          git merge $BASE_BRANCH --no-edit
           git push
