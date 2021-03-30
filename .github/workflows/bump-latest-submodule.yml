@@ -82,20 +82,18 @@ jobs:
           git checkout $PR_BRANCH
 
           cd $SUBMODULE_PATH
-          REBASE_TARGET=$SUBMODULE_BRANCH
           if [ ! -z $SUBMODULE_REMOTE ]; then
             SUBMODULE_ORIGINAL_URL=$(git config --file ../.gitmodules --get submodule.$SUBMODULE_PATH.url)
             SUBMODULE_REMOTE_URL=${SUBMODULE_ORIGINAL_URL/$REPO_OWNER/$SUBMODULE_REMOTE}
             git remote add bump_remote $SUBMODULE_REMOTE_URL
             git fetch bump_remote
-            REBASE_TARGET=bump_remote/${SUBMODULE_BRANCH}
           fi
-          git rebase $REBASE_TARGET
+          git checkout $SUBMODULE_BRANCH
           
           cd ..
           git add $SUBMODULE_PATH
           git config user.name $GIT_USER_NAME
           git config user.email $GIT_USER_EMAIL
-          git commit -m "Bump $REBASE_TARGET from submodule $SUBMODULE_PATH"
+          git commit -m "Bump branch $SUBMODULE_BRANCH from submodule $SUBMODULE_PATH"
           git merge $BASE_BRANCH --no-edit
           git push
