@@ -88,7 +88,7 @@ jobs:
             SUBMODULE_REMOTE_URL=${SUBMODULE_ORIGINAL_URL/$REPO_OWNER/$SUBMODULE_REMOTE}
             git remote add bump_remote $SUBMODULE_REMOTE_URL
             git fetch bump_remote
-            REBASE_TARGET=${SUBMODULE_REMOTE}/${SUBMODULE_BRANCH}
+            REBASE_TARGET=bump_remote/${SUBMODULE_BRANCH}
           fi
           git rebase $REBASE_TARGET
           
