@@ -94,6 +94,6 @@ jobs:
           git add $SUBMODULE_PATH
           git config user.name $GIT_USER_NAME
           git config user.email $GIT_USER_EMAIL
-          git commit -m "Bump branch $SUBMODULE_BRANCH from submodule $SUBMODULE_PATH"
+          git commit -m "Bump $SUBMODULE_PATH submodule to $SUBMODULE_BRANCH branch"
           git merge $BASE_BRANCH --no-edit
           git push
